@@ -1,0 +1,6 @@
+# Telegram-бот кино-каталога movie-mcp
+# Установка: pip install -r requirements.txt
+aiogram>=3.13
+openai>=1.40
+httpx>=0.27
+python-dotenv>=1.0

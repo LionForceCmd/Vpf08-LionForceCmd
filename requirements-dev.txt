@@ -1,0 +1,13 @@
+# Зависимости для разработки и запуска тестов (pytest).
+# Обычно достаточно: pip install -r mcp_server/requirements.txt -r telegram_bot/requirements.txt
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+python-dotenv>=1.0
+httpx>=0.27
+aiogram>=3.13
+openai>=1.40
+pytest>=8.0
+pytest-asyncio>=0.23
+# Официальный SDK Model Context Protocol — используется в тесте соответствия спецификации
+mcp>=1.2
