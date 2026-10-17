@@ -39,6 +39,7 @@ from aiogram.types import BotCommand, Message  # noqa: E402
 from agent import AgentError, MovieAgent  # noqa: E402
 from config import settings  # noqa: E402
 from llm import LLMError, OpenAILLM  # noqa: E402
+from offline_llm import OfflineLLM  # noqa: E402
 from mcp_client import MCPClient, MCPError  # noqa: E402
 from prompts import HELP_MESSAGE, START_MESSAGE  # noqa: E402
 
@@ -51,7 +52,7 @@ logger = logging.getLogger("movie-mcp-bot")
 HISTORY_KEY = "chat_history"
 
 AGENT: MovieAgent | None = None
-LLM: OpenAILLM | None = None
+LLM: Any | None = None
 MCP: MCPClient | None = None
 HISTORY_LIMIT = 20
 
@@ -171,16 +172,24 @@ async def handle_message(message: Message, state: FSMContext) -> None:
 # Запуск
 # --------------------------------------------------------------------------- #
 
-async def build_agent() -> tuple[MovieAgent, OpenAILLM, MCPClient]:
-    """Создаёт LLM, MCP-клиент и агента, выполняя рукопожатие с сервером."""
-    llm = OpenAILLM(
-        api_key=settings.openai_api_key,
-        model=settings.llm_model,
-        base_url=settings.openai_base_url,
-        temperature=settings.llm_temperature,
-        max_tokens=settings.llm_max_tokens,
-        timeout=settings.llm_timeout,
-    )
+async def build_agent() -> tuple[MovieAgent, Any, MCPClient]:
+    """Создаёт LLM, MCP-клиент и агента, выполняя рукопожатие с сервером.
+
+    При ``LLM_MODE=offline`` вместо OpenAI используется ``OfflineLLM`` —
+    тогда проект работает вообще без ключей.
+    """
+    if settings.offline_mode:
+        logger.info("Офлайн-режим: LLM не используется, работаю на встроенных правилах")
+        llm: Any = OfflineLLM()
+    else:
+        llm = OpenAILLM(
+            api_key=settings.openai_api_key,
+            model=settings.llm_model,
+            base_url=settings.openai_base_url,
+            temperature=settings.llm_temperature,
+            max_tokens=settings.llm_max_tokens,
+            timeout=settings.llm_timeout,
+        )
     mcp = MCPClient(
         settings.mcp_url,
         timeout=settings.mcp_timeout,
@@ -227,9 +236,12 @@ async def on_shutdown(bot: Bot) -> None:
 def check_config() -> list[str]:
     problems: list[str] = []
     if settings.missing_telegram_token():
-        problems.append("не задан TELEGRAM_BOT_TOKEN")
+        problems.append("не задан TELEGRAM_BOT_TOKEN (его получить можно только у @BotFather)")
     if settings.missing_openai_key():
-        problems.append("не задан OPENAI_API_KEY")
+        problems.append(
+            "не задан OPENAI_API_KEY — укажи ключ, любой совместимый провайдер "
+            "через OPENAI_BASE_URL или запусти без LLM: в .env поставь LLM_MODE=offline"
+        )
     return problems
 
 
@@ -240,7 +252,8 @@ async def main() -> None:
         for problem in problems:
             print(f"  - {problem}", file=sys.stderr)
         print(
-            "\nСкопируйте .env.example в .env, заполните значения и повторите запуск.",
+            "\nСкопируйте .env.example в .env, заполните значения и повторите запуск.\n"
+            "Чтобы проверить проект вообще без ключей, запустите: python scripts/demo_dialogue.py",
             file=sys.stderr,
         )
         raise SystemExit(1)

@@ -45,6 +45,8 @@ class BotSettings:
         self.telegram_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 
         # LLM (OpenAI и любые OpenAI-совместимые провайдеры)
+        # LLM_MODE=offline — работать вообще без ключей, на встроенных правилах
+        self.llm_mode: str = (os.getenv("LLM_MODE", "auto") or "auto").strip().lower()
         self.openai_api_key: str = os.getenv("OPENAI_API_KEY", "").strip()
         self.openai_base_url: str | None = os.getenv("OPENAI_BASE_URL") or None
         self.llm_model: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
@@ -65,17 +67,28 @@ class BotSettings:
 
     # -------------------------------------------------------------- проверки
 
+    @property
+    def offline_mode(self) -> bool:
+        """True, если LLM не нужна: работаем на встроенных правилах."""
+        return self.llm_mode in {"offline", "off", "no-llm", "rules", "demo"}
+
     def missing_telegram_token(self) -> bool:
         return not self.telegram_token
 
     def missing_openai_key(self) -> bool:
-        return not self.openai_api_key
+        """Ключ нужен только в обычном режиме с реальной моделью."""
+        return not self.openai_api_key and not self.offline_mode
 
     def describe(self) -> dict[str, object]:
         """Состояние конфигурации для /help и логов (без самих секретов)."""
         return {
             "telegram_token": "задан" if self.telegram_token else "НЕ ЗАДАН",
-            "openai_api_key": "задан" if self.openai_api_key else "НЕ ЗАДАН",
+            "llm_mode": "offline (без LLM)" if self.offline_mode else "auto (OpenAI)",
+            "openai_api_key": (
+                "не нужен в offline-режиме"
+                if self.offline_mode
+                else ("задан" if self.openai_api_key else "НЕ ЗАДАН")
+            ),
             "llm_model": self.llm_model,
             "openai_base_url": self.openai_base_url or "https://api.openai.com/v1",
             "mcp_server_url": self.mcp_url,

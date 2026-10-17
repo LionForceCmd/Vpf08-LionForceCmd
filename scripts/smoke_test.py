@@ -19,28 +19,21 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-import socket
 import sys
-import tempfile
-import threading
-import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "mcp_server"))
-sys.path.insert(0, str(PROJECT_ROOT / "telegram_bot"))
+for _path in (PROJECT_ROOT, PROJECT_ROOT / "mcp_server", PROJECT_ROOT / "telegram_bot"):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
+
+from scripts.server_runner import ServerHandle  # noqa: E402
 
 GREEN = "\033[92m"
 RED = "\033[91m"
 YELLOW = "\033[93m"
 DIM = "\033[2m"
 RESET = "\033[0m"
-
-
-def _free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
 
 
 def _print_ok(label: str, detail: str = "") -> None:
@@ -55,44 +48,9 @@ def _print_skip(label: str, detail: str = "") -> None:
     print(f"{YELLOW}SKIP{RESET} {label}" + (f"  {DIM}{detail}{RESET}" if detail else ""))
 
 
-class ServerHandle:
-    """MCP-сервер movie-mcp, поднятый в фоновом потоке."""
-
-    def __init__(self) -> None:
-        import uvicorn
-
-        db_file = Path(tempfile.gettempdir()) / "movie-mcp-smoke.db"
-        if db_file.exists():
-            db_file.unlink()
-        os.environ["MOVIE_DB_PATH"] = str(db_file)
-        os.environ["MOVIE_DB_SEED"] = "true"
-
-        import server
-        from db import MovieDB
-
-        server.settings.db_path = db_file
-        server.db = MovieDB(db_file)
-
-        self.port = _free_port()
-        self.url = f"http://127.0.0.1:{self.port}/mcp"
-        config = uvicorn.Config(server.app, host="127.0.0.1", port=self.port, log_level="warning")
-        self._uvicorn = uvicorn.Server(config)
-        self._thread = threading.Thread(target=self._uvicorn.run, daemon=True)
-
-    def __enter__(self) -> ServerHandle:
-        self._thread.start()
-        deadline = time.monotonic() + 25
-        while time.monotonic() < deadline:
-            try:
-                with socket.create_connection(("127.0.0.1", self.port), timeout=0.3):
-                    return self
-            except OSError:
-                time.sleep(0.1)
-        raise RuntimeError("MCP-сервер не запустился за 25 секунд")
-
-    def __exit__(self, *exc_info: object) -> None:
-        self._uvicorn.should_exit = True
-        self._thread.join(timeout=10)
+def _brief(data: object, limit: int = 90) -> str:
+    text = str(data)
+    return text[: limit - 3] + "..." if len(text) > limit else text
 
 
 # --------------------------------------------------------------------------- #
@@ -266,7 +224,7 @@ async def main() -> int:
 
     failures = 0
 
-    with ServerHandle() as handle:
+    with ServerHandle(db_filename="movie-mcp-smoke.db") as handle:
         print(f"\nMCP-сервер: {handle.url}\n")
 
         async with MCPClient(handle.url) as mcp_client:
